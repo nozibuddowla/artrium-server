@@ -1,4 +1,4 @@
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const express = require("express");
 
@@ -37,6 +37,67 @@ async function run() {
       //   console.log(data);
       const result = await artWorks.insertOne(data);
       res.send(result);
+    });
+
+    //   get artworks from db
+    app.get("/artworks", async (req, res) => {
+      try {
+        const { search } = req.query;
+        let query = { visibility: "public" };
+
+        if (search) {
+          query.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { userName: { $regex: search, $options: "i" } },
+          ];
+        }
+
+        const result = await artWorks.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.patch("/artworks/:id/like", async (req, res) => {
+      const id = req.params.id;
+      const result = await artWorks.updateOne(
+        { _id: new ObjectId(id) },
+        { $inc: { likes: 1 } }
+      );
+      res.send(result);
+    });
+
+    app.get("/artworks/featured", async (req, res) => {
+      try {
+        const result = await artWorks
+          .find({ visibility: "public" })
+          .sort({ createdAt: -1 })
+          .limit(6)
+          .toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching featured artworks:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.get("/artworks/:id", async (req, res) => {
+      try {
+        const artWorkId = req.params.id;
+        // console.log(artWorkId);
+        const query = { _id: new ObjectId(artWorkId) };
+        const result = await artWorks.findOne(query);
+
+        if (!result) {
+          return res.status(404).send({ message: "Artwork not found" });
+        }
+
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching artwork:", error);
+        res.status(500).send({ message: "Server error" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
