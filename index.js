@@ -43,12 +43,19 @@ async function run() {
     app.get("/artworks", async (req, res) => {
       try {
         const { search } = req.query;
+
         let query = { visibility: "public" };
 
         if (search) {
-          query.$or = [
-            { title: { $regex: search, $options: "i" } },
-            { userName: { $regex: search, $options: "i" } },
+          query.$and = [
+            { visibility: "public" },
+            {
+              $or: [
+                { title: { $regex: search, $options: "i" } },
+                { userName: { $regex: search, $options: "i" } },
+                { category: { $regex: search, $options: "i" } },
+              ],
+            },
           ];
         }
 
