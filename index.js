@@ -87,17 +87,38 @@ async function run() {
         const artWorkId = req.params.id;
         // console.log(artWorkId);
         const query = { _id: new ObjectId(artWorkId) };
-        const result = await artWorks.findOne(query);
+        const artwork = await artWorks.findOne(query);
 
-        if (!result) {
+        if (!artwork) {
           return res.status(404).send({ message: "Artwork not found" });
         }
 
-        res.send(result);
+        const totalArtworks = await artWorks.countDocuments({
+          userEmail: artwork.userEmail,
+        });
+
+        res.send({ ...artwork, artistTotalCount: totalArtworks });
       } catch (error) {
-        console.error("Error fetching artwork:", error);
         res.status(500).send({ message: "Server error" });
       }
+    });
+
+    app.get("/my-gallery", async (req, res) => {
+      const { email } = req.query;
+      const query = { userEmail: email };
+      const result = await artWorks.find(query).toArray();
+      res.send(result);
+    });
+
+    // PUT: Update an artwork
+    app.put("/artworks/:id", async (req, res) => {
+      const myArtworksId = req.params.id;
+      const filter = { _id: new ObjectId(myArtworksId) };
+      const updatedDoc = {
+        $set: req.body,
+      };
+      const result = await artWorks.updateOne(filter, updatedDoc);
+      res.send(result);
     });
 
     await client.db("admin").command({ ping: 1 });
