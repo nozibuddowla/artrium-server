@@ -31,6 +31,7 @@ async function run() {
 
     const database = client.db("artrium_db");
     const artWorks = database.collection("artWorks");
+    const favoritesCollection = database.collection("favorites");
 
     app.post("/artworks", async (req, res) => {
       const data = req.body;
@@ -134,6 +135,56 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await artWorks.deleteOne(query);
       res.send(result);
+    });
+
+    // --- FAVORITES ROUTES ---
+
+    // POST: Save a new favorite item
+    app.post("/favorites", async (req, res) => {
+      try {
+        const favoriteItem = req.body;
+        const alreadyFavorites = await favoritesCollection.findOne({
+          artworkId: favoriteItem.artworkId,
+          userEmail: favoriteItem.userEmail,
+        });
+
+        if (alreadyFavorites) {
+          return res.status(400).send({ message: "Already in favorites" });
+        }
+
+        const result = await favoritesCollection.insertOne(favoriteItem);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error saving favorite" });
+      }
+    });
+
+    // GET: Get favorites for a specific user via query email
+    app.get("/favorites", async (req, res) => {
+      try {
+        const email = req.query.email;
+        if (!email) {
+          return res.status(400).send({ message: "Email is required" });
+        }
+        const query = { userEmail: email };
+
+        const result = await favoritesCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error fetching favorites" });
+      }
+    });
+
+    // DELETE: Remove a favorite by its ID
+    app.delete("/favorites/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await favoritesCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error deleting favorite" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
