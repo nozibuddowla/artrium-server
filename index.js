@@ -69,11 +69,36 @@ async function run() {
 
     app.patch("/artworks/:id/like", async (req, res) => {
       const id = req.params.id;
+      const { userEmail } = req.body;
+
+      const artwork = await artWorks.findOne({ _id: new ObjectId(id) });
+      // Check if user has already liked it
+      const hasLiked = artwork.likedBy?.includes(userEmail);
+
+      let updateDoc;
+      if (hasLiked) {
+        // UNLIKE logic
+        updateDoc = {
+          $pull: { likedBy: userEmail },
+          $inc: { likes: -1 },
+        };
+      } else {
+        // LIKE logic
+        updateDoc = {
+          $addToSet: { likedBy: userEmail },
+          $inc: { likes: 1 },
+        };
+      }
+
       const result = await artWorks.updateOne(
         { _id: new ObjectId(id) },
-        { $inc: { likes: 1 } }
+        updateDoc
       );
-      res.send(result);
+
+      res.send({
+        ...result,
+        isLiked: !hasLiked,
+      });
     });
 
     app.get("/artworks/featured", async (req, res) => {
