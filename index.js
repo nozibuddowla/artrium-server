@@ -32,6 +32,7 @@ async function run() {
     const database = client.db("artrium_db");
     const artWorks = database.collection("artWorks");
     const favoritesCollection = database.collection("favorites");
+    const usersCollection = database.collection("users");
 
     app.post("/artworks", async (req, res) => {
       const data = req.body;
@@ -209,6 +210,145 @@ async function run() {
         res.send(result);
       } catch (error) {
         res.status(500).send({ message: "Error deleting favorite" });
+      }
+    });
+
+    // SAVE/UPDATE USER
+    app.put("/users", async (req, res) => {
+      const { email, displayName, photoURL, bio } = req.body;
+      const filter = { email: email };
+      const updatedDoc = {
+        $set: {
+          displayName,
+          photoURL,
+          bio,
+        },
+      };
+      const userResult = await usersCollection.updateOne(filter, updatedDoc);
+      await artWorks.updateMany(
+        { userEmail: email },
+        { $set: { userName: displayName, userPhoto: photoURL } }
+      );
+
+      res.send(userResult);
+    });
+
+    // GET TOP ARTISTS
+    app.get("/top-artists", async (req, res) => {
+      const result = await artWorks
+        .aggregate([
+          { $match: { visibility: "public" } },
+          {
+            $group: {
+              _id: "$userEmail",
+              name: { $first: "$userName" },
+              profileImage: { $first: "$userPhoto" },
+              artworkCount: { $sum: 1 },
+              totalLikes: { $sum: { $ifNull: ["$likes", 0] } },
+            },
+          },
+          { $sort: { totalLikes: -1, artworkCount: -1 } },
+          { $limit: 4 },
+        ])
+        .toArray();
+      res.send(result);
+    });
+
+    // GET SINGLE ARTIST BY ID
+    app.get("/artist-details/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        const user = await usersCollection.findOne({ email: email });
+
+        const artworks = await artWorks
+          .find({ userEmail: email, visibility: "public" })
+          .toArray();
+
+        const totalArtworks = await artWorks.countDocuments({
+          userEmail: email,
+        });
+
+        if (!user) {
+          if (artworks.length > 0) {
+            const fallbackUser = {
+              displayName: artworks[0].userName,
+              photoURL: artworks[0].userPhoto,
+              email: email,
+              bio: "New Artist",
+              followers: 0,
+            };
+            return res.send({
+              user: fallbackUser,
+              artworks,
+              totalArtworks,
+              followers: 0,
+            });
+          }
+          return res
+            .status(404)
+            .send({ message: "Artist has no public profile or artworks" });
+        }
+
+        res.send({
+          user,
+          artworks,
+          totalArtworks,
+          followers: user.followers || 0,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "Server error fetching artist" });
+      }
+    });
+
+    // --- FOLLOW/UNFOLLOW ARTIST ---
+    app.patch("/users/follow/:email", async (req, res) => {
+      try {
+        const targetEmail = req.params.email;
+        const { followerEmail } = req.body;
+
+        if (targetEmail === followerEmail) {
+          return res
+            .status(400)
+            .send({ message: "You cannot follow yourself" });
+        }
+
+        const artist = await usersCollection.findOne({ email: targetEmail });
+
+        if (!artist) {
+          await usersCollection.insertOne({
+            email: targetEmail,
+            followers: 0,
+            followerList: [],
+          });
+        }
+
+        const currentArtist = await usersCollection.findOne({
+          email: targetEmail,
+        });
+        const isFollowing = currentArtist.followerList?.includes(followerEmail);
+
+        let updateDoc;
+        if (isFollowing) {
+          updateDoc = {
+            $pull: { followerList: followerEmail },
+            $inc: { followers: -1 },
+          };
+        } else {
+          updateDoc = {
+            $addToSet: { followerList: followerEmail },
+            $inc: { followers: 1 },
+          };
+        }
+
+        const result = await usersCollection.updateOne(
+          { email: targetEmail },
+          updateDoc
+        );
+        res.send({ ...result, isFollowing: !isFollowing });
+      } catch (error) {
+        console.error("Follow error:", error);
+        res.status(500).send({ message: "Internal server error" });
       }
     });
 
