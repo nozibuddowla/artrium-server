@@ -44,13 +44,18 @@ async function run() {
     //   get artworks from db
     app.get("/artworks", async (req, res) => {
       try {
-        const { search } = req.query;
+        const { search, category } = req.query;
 
         let query = { visibility: "public" };
+
+        if (category && category !== "All") {
+          query.category = category;
+        }
 
         if (search) {
           query.$and = [
             { visibility: "public" },
+            ...(query.category ? [{ category: query.category }] : []),
             {
               $or: [
                 { title: { $regex: search, $options: "i" } },
@@ -185,7 +190,7 @@ async function run() {
       }
     });
 
-    // GET: Get favorites for a specific user via query email
+    // get favorites for a specific user via query email
     app.get("/favorites", async (req, res) => {
       try {
         const email = req.query.email;
@@ -201,7 +206,7 @@ async function run() {
       }
     });
 
-    // DELETE: Remove a favorite by its ID
+    // remove a favorite by its ID
     app.delete("/favorites/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -224,10 +229,12 @@ async function run() {
           bio,
         },
       };
-      const userResult = await usersCollection.updateOne(filter, updatedDoc);
+      const userResult = await usersCollection.updateOne(filter, updatedDoc, {
+        upsert: true,
+      });
       await artWorks.updateMany(
         { userEmail: email },
-        { $set: { userName: displayName, userPhoto: photoURL } }
+        { $set: { userName: displayName, userPhoto: photoURL, userBio: bio } }
       );
 
       res.send(userResult);
@@ -275,7 +282,7 @@ async function run() {
               displayName: artworks[0].userName,
               photoURL: artworks[0].userPhoto,
               email: email,
-              bio: "New Artist",
+              bio: artworks[0].userBio || "New Artist",
               followers: 0,
             };
             return res.send({
